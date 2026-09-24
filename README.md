@@ -25,10 +25,10 @@ As EV adoption grows, charging station operators and grid planners need to antic
 
 | Model | MAE | RMSE | MAPE |
 |---|---|---|---|
-| Seasonal Naive | *fill in* | *fill in* | *fill in* |
-| Moving Average | *fill in* | *fill in* | *fill in* |
-| ARIMA(2,1,2) | *fill in* | *fill in* | *fill in* |
-| SARIMA(2,1,2)(1,1,1,7) | *fill in* | *fill in* | *fill in* |
+|Seasonal Naive	177.312082	214.193877	21.197220
+1	Moving Average	232.491905	293.647921	35.619758
+2	ARIMA(2,1,2)	210.226820	258.356010	31.348113
+3	SARIMA(2,1,2)(1,1,1,7)	143.562891	175.382735	19.914626
 
 **Best model:** *fill in — which model, and why (e.g., only one modeling weekly seasonality explicitly)*
 **Improvement over baseline:** *fill in — % reduction in RMSE vs. seasonal naive*
