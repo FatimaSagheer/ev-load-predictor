@@ -1,0 +1,51 @@
+[
+  {
+    "model": "SARIMA(2,1,2)(1,1,1,7)",
+    "mae": 143.56,
+    "rmse": 175.38,
+    "mape": 19.91,
+    "key": "sarima"
+  },
+  {
+    "model": "ETS (Holt-Winters)",
+    "mae": 172.22,
+    "rmse": 211.09,
+    "mape": 24.3,
+    "key": "ets"
+  },
+  {
+    "model": "Seasonal Naive",
+    "mae": 177.31,
+    "rmse": 214.19,
+    "mape": 21.2,
+    "key": "seasonal_naive"
+  },
+  {
+    "model": "LSTM",
+    "mae": 198.57,
+    "rmse": 233.16,
+    "mape": 26.96,
+    "key": "lstm"
+  },
+  {
+    "model": "ARIMA(2,1,2)",
+    "mae": 210.23,
+    "rmse": 258.36,
+    "mape": 31.35,
+    "key": "arima"
+  },
+  {
+    "model": "Moving Average",
+    "mae": 232.49,
+    "rmse": 293.65,
+    "mape": 35.62,
+    "key": "moving_average"
+  },
+  {
+    "model": "Prophet",
+    "mae": 414.87,
+    "rmse": 443.64,
+    "mape": 55.07,
+    "key": "prophet"
+  }
+]

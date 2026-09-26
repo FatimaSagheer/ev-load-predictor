@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EV Charging Demand Forecast</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="{{ url_for('static', filename='chart.umd.js') }}"></script>
+<style>
+  :root{
+    --bg:#0D1210; --panel:#161D1A; --line:#2A342F;
+    --text:#E7EDE9; --muted:#8CA098; --amber:#F2A93B; --teal:#4FD1AE;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .wrap{max-width:960px;margin:0 auto;padding:48px 24px 80px;}
+  h1{font-size:26px;font-weight:800;margin:0 0 6px;letter-spacing:-0.01em;}
+  .lede{color:var(--muted);font-size:14.5px;margin:0 0 28px;}
+  .explain-box{
+    background:rgba(79,209,174,0.06);border:1px solid rgba(79,209,174,0.25);
+    border-radius:8px;padding:14px 18px;font-size:13.5px;color:var(--muted);
+    line-height:1.6;margin-bottom:28px;
+  }
+  .explain-box strong{color:var(--teal);}
+
+  .controls{display:flex;align-items:center;gap:14px;margin-bottom:24px;flex-wrap:wrap;}
+  select{
+    background:var(--panel);color:var(--text);border:1px solid var(--line);
+    border-radius:8px;padding:10px 14px;font-size:14px;font-family:inherit;
+    min-width:220px; cursor:pointer;
+  }
+  label{font-size:13px;color:var(--muted);}
+
+  .metric-row{display:flex;gap:28px;margin-bottom:24px;flex-wrap:wrap;}
+  .metric{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 20px;min-width:110px;}
+  .metric .num{font-family:'JetBrains Mono';font-size:22px;font-weight:700;color:var(--amber);}
+  .metric .lbl{font-size:12px;color:var(--muted);margin-top:4px;}
+
+  .chart-panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px 16px 12px;margin-bottom:28px;}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  thead th{text-align:left;color:var(--muted);font-weight:500;font-size:12px;padding:0 10px 10px;border-bottom:1px solid var(--line);}
+  thead th:not(:first-child), tbody td:not(:first-child){text-align:right;font-family:'JetBrains Mono';}
+  tbody td{padding:11px 10px;border-bottom:1px solid var(--line);}
+  tbody tr.active{background:rgba(242,169,59,0.08);}
+  tbody tr.active td{color:var(--amber);font-weight:600;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr{cursor:pointer;}
+
+  footer{color:var(--muted);font-size:12.5px;margin-top:30px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>EV Charging Demand Forecast</h1>
+  <p class="lede">Pick a model to see its forecast against actual demand, and compare metrics across all models.</p>
+
+  <div class="explain-box">
+    <strong>In plain English:</strong> this predicts how much electricity a network of EV charging stations will use each day — like a weather forecast, but for power demand. We tested 7 different guessing methods; <span style="color:var(--amber);font-weight:600;">SARIMA</span> (the top row below) won because it already "knows" people charge more on weekdays than weekends. Interestingly, the fancy AI neural network (LSTM) did worse — it needs much more historical data to learn that pattern on its own.
+  </div>
+
+  <div class="controls">
+    <label for="modelSelect">Model:</label>
+    <select id="modelSelect"></select>
+  </div>
+
+  <div class="metric-row" id="metricRow"></div>
+
+  <div class="chart-panel">
+    <canvas id="forecastChart" height="140"></canvas>
+    <div id="chartError" style="color:#E27D60;font-family:monospace;font-size:12.5px;padding:10px;white-space:pre-wrap;"></div>
+  </div>
+
+  <table>
+    <thead><tr><th>Model</th><th>MAE</th><th>RMSE</th><th>MAPE</th></tr></thead>
+    <tbody id="resultsBody"></tbody>
+  </table>
+
+  <footer>Click a row in the table (or use the dropdown) to highlight that model's forecast on the chart above.</footer>
+</div>
+
+<script>
+let chartData = null;
+let metrics = null;
+let chart = null;
+
+function alignToFull(predDates, predValues, fullDates){
+  const map = {};
+  predDates.forEach((d,i)=>map[d]=predValues[i]);
+  return fullDates.map(d => d in map ? map[d] : null);
+}
+
+function renderMetrics(activeKey){
+  const row = document.getElementById('metricRow');
+  const m = metrics.find(x => x.key === activeKey);
+  row.innerHTML = `
+    <div class="metric"><div class="num">${m.mae.toFixed(1)}</div><div class="lbl">MAE</div></div>
+    <div class="metric"><div class="num">${m.rmse.toFixed(1)}</div><div class="lbl">RMSE</div></div>
+    <div class="metric"><div class="num">${m.mape.toFixed(1)}%</div><div class="lbl">MAPE</div></div>
+  `;
+}
+
+function renderTable(activeKey){
+  const body = document.getElementById('resultsBody');
+  body.innerHTML = '';
+  const sorted = [...metrics].sort((a,b)=>a.rmse-b.rmse);
+  sorted.forEach(m => {
+    const tr = document.createElement('tr');
+    if (m.key === activeKey) tr.className = 'active';
+    tr.innerHTML = `<td>${m.model}</td><td>${m.mae.toFixed(2)}</td><td>${m.rmse.toFixed(2)}</td><td>${m.mape.toFixed(2)}%</td>`;
+    tr.onclick = () => { document.getElementById('modelSelect').value = m.key; updateView(m.key); };
+    body.appendChild(tr);
+  });
+}
+
+function renderChart(activeKey){
+  const errBox = document.getElementById('chartError');
+  errBox.textContent = '';
+  try{
+    if (typeof Chart === 'undefined'){
+      errBox.textContent = 'ERROR: Chart.js failed to load from the CDN (cdnjs.cloudflare.com). Check your network/firewall or try a different browser.';
+      return;
+    }
+    const ctx = document.getElementById('forecastChart').getContext('2d');
+    const predSeries = alignToFull(chartData.pred_dates, chartData[activeKey], chartData.plot_dates);
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: chartData.plot_dates,
+        datasets: [
+          {label:'Actual', data: chartData.plot_actual, borderColor:'#E7EDE9', borderWidth:2.2, pointRadius:0, tension:0.15},
+          {label:'Forecast', data: predSeries, borderColor:'#F2A93B', borderWidth:2.4, pointRadius:0, tension:0.15},
+        ]
+      },
+      options: {
+        responsive:true,
+        maintainAspectRatio: true,
+        aspectRatio: 2.5,
+        plugins:{ legend:{labels:{color:'#8CA098'}}, tooltip:{mode:'index', intersect:false} },
+        scales:{
+          x:{ ticks:{color:'#8CA098', maxTicksLimit:8, font:{family:'JetBrains Mono', size:10.5}}, grid:{color:'#2A342F'} },
+          y:{ ticks:{color:'#8CA098', font:{family:'JetBrains Mono', size:10.5}}, grid:{color:'#2A342F'} }
+        }
+      }
+    });
+  } catch(e) {
+    errBox.textContent = 'ERROR rendering chart: ' + e.message;
+    console.error(e);
+  }
+}
+
+function updateView(activeKey){
+  renderMetrics(activeKey);
+  renderTable(activeKey);
+  renderChart(activeKey);
+}
+
+async function init(){
+  try {
+    const res = await fetch('/api/results');
+    if (!res.ok) throw new Error('API returned status ' + res.status);
+    const data = await res.json();
+    chartData = data.chart;
+    metrics = data.metrics;
+
+    const select = document.getElementById('modelSelect');
+    const sorted = [...metrics].sort((a,b)=>a.rmse-b.rmse);
+    sorted.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.key; opt.textContent = m.model;
+      select.appendChild(opt);
+    });
+    select.value = sorted[0].key;
+    select.onchange = () => updateView(select.value);
+
+    updateView(sorted[0].key);
+  } catch(e) {
+    document.getElementById('chartError').textContent = 'ERROR loading data: ' + e.message;
+    console.error(e);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
